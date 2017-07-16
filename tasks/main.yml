@@ -13,6 +13,10 @@
     region: "{{ vpc_region }}"
   register: vpc
 
+- name: Set a fact for VPC ID
+  set_fact:
+    vpc_id: "{{ vpc.vpc.id }}"
+
 - name: "Confirm vpc created with correct cidr"
   assert:
     that:
@@ -22,7 +26,7 @@
 - name: "Create public subnets"
   local_action:
     module: ec2_vpc_subnet
-    vpc_id: "{{ vpc.vpc.id }}"
+    vpc_id: "{{ vpc_id }}"
     region: "{{ vpc_region }}"
     cidr: "{{ item }}"
     az: "{{ vpc_region }}{{ vpc_public_subnet_azs[item] }}"
@@ -41,7 +45,7 @@
 - name: "Create internet gateway for public subnets"
   local_action:
     module: ec2_vpc_igw
-    vpc_id: "{{ vpc.vpc.id }}"
+    vpc_id: "{{ vpc_id }}"
     region: "{{ vpc_region }}"
   register: igw
 
@@ -54,7 +58,7 @@
 - name: "Create route table for public subnets"
   local_action:
     module: ec2_vpc_route_table
-    vpc_id: "{{ vpc.vpc.id }}"
+    vpc_id: "{{ vpc_id }}"
     region: "{{ vpc_region }}"
     subnets: "{{ vpc_public_subnet_cidrs }}"
     tags:
@@ -76,7 +80,7 @@
 - block:
   - name: "Delete public subnets"
     ec2_vpc_subnet:
-      vpc_id: "{{ vpc.vpc.id }}"
+      vpc_id: "{{ vpc_id }}"
       region: "{{ vpc_region }}"
       cidr: "{{ item }}"
       state: absent
@@ -85,7 +89,7 @@
 
   - name: "Delete internet gateway for public subnets"
     ec2_vpc_igw:
-      vpc_id: "{{ vpc.vpc.id }}"
+      vpc_id: "{{ vpc_id }}"
       region: "{{ vpc_region }}"
       state: absent
 
@@ -93,7 +97,7 @@
     ec2_vpc_route_table_facts:
       region: "{{ vpc_region }}"
       filters:
-        vpc-id: "{{ vpc.vpc.id }}"
+        vpc-id: "{{ vpc_id }}"
     register: dec_rtbs
 
   - debug: msg="{{dec_rtbs}}"
@@ -113,7 +117,7 @@
   # to determine whether to run.
   - name: "Delete route table for public subnets"
     ec2_vpc_route_table:
-      vpc_id: "{{ vpc.vpc.id }}"
+      vpc_id: "{{ vpc_id }}"
       region: "{{ vpc_region }}"
       route_table_id: "{{ item.key }}"
       lookup: id  # searches by tag by default
