@@ -1,6 +1,7 @@
 ---
 service_env: 'dev'
 service_state: 'present'
+
 vpc_name: 'test'
 vpc_cidr: '10.0.0.0/16'
 vpc_region: 'us-east-1'

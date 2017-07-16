@@ -64,79 +64,70 @@
         gateway_id: "{{ igw.gateway_id }}"
   register: rtb
 
-- name: "Confirm route table settings"
-  assert:
-    that:
-      - "rtb.route_table.routes[1].destination_cidr_block == '0.0.0.0/0'"
-      - "rtb.route_table.routes[1].gateway_id == igw.gateway_id"
-      - "rtb.route_table.vpc_id == vpc.vpc.id"
+# these aren't reliable as new vpcs come with a local-only rtb which can end up as [1]
+# - name: "Confirm route table settings"
+#   assert:
+#     that:
+#       - "rtb.route_table.routes[1].destination_cidr_block == '0.0.0.0/0'"
+#       - "rtb.route_table.routes[1].gateway_id == igw.gateway_id"
+#       - "rtb.route_table.vpc_id == vpc.vpc.id"
 
 # Decommission block
 - block:
-  - name: "Create the vpc if it doesn't already exist."
-    local_action:
-      module: ec2_vpc_net
-      name: "{{ vpc_name }}_{{ service_env }}"
-      cidr_block: "{{ vpc_cidr }}"
-      region: "{{ vpc_region }}"
-    register: vpc
-
-  - name: "Confirm vpc created with correct cidr"
-    assert:
-      that:
-        - "vpc.vpc.cidr_block == vpc_cidr"
-      msg: "Unexpected cidr block assigned to VPC."
-
-  - name: "Create public subnets"
-    local_action:
-      module: ec2_vpc_subnet
+  - name: "Delete public subnets"
+    ec2_vpc_subnet:
       vpc_id: "{{ vpc.vpc.id }}"
       region: "{{ vpc_region }}"
       cidr: "{{ item }}"
-      az: "{{ vpc_region }}{{ vpc_public_subnet_azs[item] }}"
-      tags:
-        vpc: "{{ vpc_name }}_{{ service_env }}"
+      state: absent
     with_items:
       - "{{ vpc_public_subnet_cidrs }}"
-    register: public_subnets
 
-  # it's hard to get fancy with dicts in ansible the way one might in python
-  - name: "Confirm the right number of subnets were created"
-    assert:
-      that:
-        - "public_subnets.results|length == vpc_public_subnet_cidrs|length"
-
-  - name: "Create internet gateway for public subnets"
-    local_action:
-      module: ec2_vpc_igw
+  - name: "Delete internet gateway for public subnets"
+    ec2_vpc_igw:
       vpc_id: "{{ vpc.vpc.id }}"
       region: "{{ vpc_region }}"
-    register: igw
+      state: absent
 
-  - name: "Confirm we got a valid gateway id"
-    assert:
-      that:
-        - "igw.gateway_id != ''"
-      msg: "Empty or non-existant internet gateway id. did the create fail silently?"
+  - name: Get list of route tables
+    ec2_vpc_route_table_facts:
+      region: "{{ vpc_region }}"
+      filters:
+        vpc-id: "{{ vpc.vpc.id }}"
+    register: dec_rtbs
 
-  - name: "Create route table for public subnets"
-    local_action:
-      module: ec2_vpc_route_table
+  - debug: msg="{{dec_rtbs}}"
+
+  # using a custom module here. nothing fancy. it looks at the route tables
+  # dict provided by ansible's built-in module. checks for "main": true in any
+  # of the rtb's associations. if present, mark it as False (for NO DELETE PLZ)
+  # result is something like {'rtb-1234567': True, 'rtb-9876543': False}
+  - name: Determine deleteable route tables
+    rtb_deleteable:
+      route_tables: "{{ dec_rtbs.route_tables }}"
+    register: deleteable
+
+  - debug: msg="{{deleteable.deleteable}}"
+
+  # iterating over the dictionary here, key is our rtb id, and we use the value
+  # to determine whether to run.
+  - name: "Delete route table for public subnets"
+    ec2_vpc_route_table:
       vpc_id: "{{ vpc.vpc.id }}"
       region: "{{ vpc_region }}"
-      subnets: "{{ vpc_public_subnet_cidrs }}"
-      tags:
-        vpc: "{{ vpc_name }}_{{ service_env }}"
-      routes:
-        - dest: 0.0.0.0/0
-          gateway_id: "{{ igw.gateway_id }}"
-    register: rtb
+      route_table_id: "{{ item.key }}"
+      lookup: id  # searches by tag by default
+      state: absent
+    with_dict: "{{ deleteable.deleteable }}"
+    when:
+      - item.value
 
-  - name: "Confirm route table settings"
-    assert:
-      that:
-        - "rtb.route_table.routes[1].destination_cidr_block == '0.0.0.0/0'"
-        - "rtb.route_table.routes[1].gateway_id == igw.gateway_id"
-        - "rtb.route_table.vpc_id == vpc.vpc.id"
 
+  - name: "Set VPC state to absent"
+    ec2_vpc_net:
+      name: "{{ vpc_name }}_{{ service_env }}"
+      cidr_block: "{{ vpc_cidr }}"
+      region: "{{ vpc_region }}"
+      state: absent
+    register: vpc
   when: "service_state == 'absent'"

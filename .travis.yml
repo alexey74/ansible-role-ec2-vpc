@@ -12,6 +12,7 @@ addons:
   apt:
     packages:
       - python-pip
+      - git
 
 install:
   - pip install ansible
@@ -23,8 +24,9 @@ install:
   - printf '[defaults]\nroles_path=../' > ansible.cfg
 
 script:
+  - if [ -f 'requirements.yml' ]; then ansible-galaxy install -r requirements.yml; fi
   - ansible-playbook test.yml --syntax-check
-  - ansible-playbook test.yml -c local -b
+  # - ansible-playbook test.yml -c local -b # no aws creds, should dry run i guess...
 
 notifications:
   webhooks: https://galaxy.ansible.com/api/v1/notifications/
