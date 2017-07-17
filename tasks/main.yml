@@ -36,11 +36,17 @@
     - "{{ vpc_public_subnet_cidrs }}"
   register: public_subnets
 
+
 # it's hard to get fancy with dicts in ansible the way one might in python
 - name: "Confirm the right number of subnets were created"
   assert:
     that:
       - "public_subnets.results|length == vpc_public_subnet_cidrs|length"
+
+- name: "Extract subnet IDs and publish to fact 'vpc_public_subnets'"
+  get_subnet_ids:
+    subnets: "{{ public_subnets.results }}"
+  register: vpc_public_subnets
 
 - name: "Create internet gateway for public subnets"
   local_action:
