@@ -1,93 +1,94 @@
 ---
-# tasks file for ec2-vpc
-- name: "Ensure pip is installed."
-  easy_install: name=pip
-- name: "Ensure boto is installed."
-  pip: name=boto
+# commissioning block
+- block:
+  - name: "Create the vpc if it doesn't already exist."
+    local_action:
+      module: ec2_vpc_net
+      name: "{{ vpc_name }}_{{ service_env }}"
+      cidr_block: "{{ vpc_cidr }}"
+      region: "{{ vpc_region }}"
+    register: vpc
 
-- name: "Create the vpc if it doesn't already exist."
-  local_action:
-    module: ec2_vpc_net
-    name: "{{ vpc_name }}_{{ service_env }}"
-    cidr_block: "{{ vpc_cidr }}"
-    region: "{{ vpc_region }}"
-  register: vpc
+  - name: Set a fact for VPC ID
+    set_fact:
+      vpc_id: "{{ vpc.vpc.id }}"
 
-- name: Set a fact for VPC ID
-  set_fact:
-    vpc_id: "{{ vpc.vpc.id }}"
+  - name: "Confirm vpc created with correct cidr"
+    assert:
+      that:
+        - "vpc.vpc.cidr_block == vpc_cidr"
+      msg: "Unexpected cidr block assigned to VPC."
 
-- name: "Confirm vpc created with correct cidr"
-  assert:
-    that:
-      - "vpc.vpc.cidr_block == vpc_cidr"
-    msg: "Unexpected cidr block assigned to VPC."
-
-- name: "Create public subnets"
-  local_action:
-    module: ec2_vpc_subnet
-    vpc_id: "{{ vpc_id }}"
-    region: "{{ vpc_region }}"
-    cidr: "{{ item }}"
-    az: "{{ vpc_region }}{{ vpc_public_subnet_azs[item] }}"
-    tags:
-      vpc: "{{ vpc_name }}_{{ service_env }}"
-  with_items:
-    - "{{ vpc_public_subnet_cidrs }}"
-  register: public_subnets
+  - name: "Create public subnets"
+    local_action:
+      module: ec2_vpc_subnet
+      vpc_id: "{{ vpc_id }}"
+      region: "{{ vpc_region }}"
+      cidr: "{{ item }}"
+      az: "{{ vpc_region }}{{ vpc_public_subnet_azs[item] }}"
+      tags:
+        vpc: "{{ vpc_name }}_{{ service_env }}"
+    with_items:
+      - "{{ vpc_public_subnet_cidrs }}"
+    register: public_subnets
 
 
-# it's hard to get fancy with dicts in ansible the way one might in python
-- name: "Confirm the right number of subnets were created"
-  assert:
-    that:
-      - "public_subnets.results|length == vpc_public_subnet_cidrs|length"
+  # it's hard to get fancy with dicts in ansible the way one might in python
+  - name: "Confirm the right number of subnets were created"
+    assert:
+      that:
+        - "public_subnets.results|length == vpc_public_subnet_cidrs|length"
 
-- name: "Extract subnet IDs..."
-  get_subnet_ids:
-    subnets: "{{ public_subnets.results }}"
-  register: public_subnets
+  - name: "Extract subnet IDs..."
+    get_subnet_ids:
+      subnets: "{{ public_subnets.results }}"
+    register: public_subnets
 
-- name: "... and publish to fact 'vpc_public_subnets'"
-  set_fact:
-    vpc_public_subnets: "{{public_subnets.subnets}}"
+  - name: "... and publish to fact 'vpc_public_subnets'"
+    set_fact:
+      vpc_public_subnets: "{{public_subnets.subnets}}"
 
-- name: "Create internet gateway for public subnets"
-  local_action:
-    module: ec2_vpc_igw
-    vpc_id: "{{ vpc_id }}"
-    region: "{{ vpc_region }}"
-  register: igw
+  - name: "Create internet gateway for public subnets"
+    local_action:
+      module: ec2_vpc_igw
+      vpc_id: "{{ vpc_id }}"
+      region: "{{ vpc_region }}"
+    register: igw
 
-- name: "Confirm we got a valid gateway id"
-  assert:
-    that:
-      - "igw.gateway_id != ''"
-    msg: "Empty or non-existant internet gateway id. did the create fail silently?"
+  - name: "Confirm we got a valid gateway id"
+    assert:
+      that:
+        - "igw.gateway_id != ''"
+      msg: "Empty or non-existant internet gateway id. did the create fail silently?"
 
-- name: "Create route table for public subnets"
-  local_action:
-    module: ec2_vpc_route_table
-    vpc_id: "{{ vpc_id }}"
-    region: "{{ vpc_region }}"
-    subnets: "{{ vpc_public_subnet_cidrs }}"
-    tags:
-      vpc: "{{ vpc_name }}_{{ service_env }}"
-    routes:
-      - dest: 0.0.0.0/0
-        gateway_id: "{{ igw.gateway_id }}"
-  register: rtb
-
-# these aren't reliable as new vpcs come with a local-only rtb which can end up as [1]
-# - name: "Confirm route table settings"
-#   assert:
-#     that:
-#       - "rtb.route_table.routes[1].destination_cidr_block == '0.0.0.0/0'"
-#       - "rtb.route_table.routes[1].gateway_id == igw.gateway_id"
-#       - "rtb.route_table.vpc_id == vpc.vpc.id"
+  - name: "Create route table for public subnets"
+    local_action:
+      module: ec2_vpc_route_table
+      vpc_id: "{{ vpc_id }}"
+      region: "{{ vpc_region }}"
+      subnets: "{{ vpc_public_subnet_cidrs }}"
+      tags:
+        vpc: "{{ vpc_name }}_{{ service_env }}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ igw.gateway_id }}"
+    register: rtb
+  when: "service_state == 'present'"
 
 # Decommission block
 - block:
+  - name: Get VPC ID for teardown
+    local_action:
+      module: ec2_vpc_net_facts
+      region: "{{ vpc_region }}"
+      filters:
+        "tag:Name": "{{ vpc_name }}_{{ service_env }}"
+    register: vpcs
+
+  - name: Set vpc_id fact from VPC information
+    set_fact:
+      vpc_id: "{{ vpcs.vpcs[0].id }}"
+
   - name: "Delete public subnets"
     ec2_vpc_subnet:
       vpc_id: "{{ vpc_id }}"
@@ -109,8 +110,6 @@
       filters:
         vpc-id: "{{ vpc_id }}"
     register: dec_rtbs
-
-  - debug: msg="{{dec_rtbs}}"
 
   # using a custom module here. nothing fancy. it looks at the route tables
   # dict provided by ansible's built-in module. checks for "main": true in any

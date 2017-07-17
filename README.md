@@ -10,6 +10,9 @@ Provide a simple self-contained interface.
 
 ## How?
 
+### Pre-requisites
+* Python: `boto` (not boto3)
+
 ```yaml
 service_env: 'dev'        # actual VPC name will have this appended ie: name_env
 service_state: 'present'  # set to 'absent' to tear things down after
@@ -26,6 +29,10 @@ vpc_public_subnet_azs:
 ```
 
 ## Under the Hood
+
+### library/get_subnet_ids.py
+Just does some dict comprehension to return only subnet IDs from an obj full of
+information.
 
 ### library/rtb_deleteable.py
 
