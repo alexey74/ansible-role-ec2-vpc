@@ -43,10 +43,14 @@
     that:
       - "public_subnets.results|length == vpc_public_subnet_cidrs|length"
 
-- name: "Extract subnet IDs and publish to fact 'vpc_public_subnets'"
+- name: "Extract subnet IDs..."
   get_subnet_ids:
     subnets: "{{ public_subnets.results }}"
-  register: vpc_public_subnets
+  register: public_subnets
+
+- name: "... and publish to fact 'vpc_public_subnets'"
+  set_fact:
+    vpc_public_subnets: "{{public_subnets.subnets}}"
 
 - name: "Create internet gateway for public subnets"
   local_action:
