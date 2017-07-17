@@ -89,7 +89,7 @@
     set_fact:
       vpc_id: "{{ vpcs.vpcs[0].id }}"
 
-  - name: "Delete public subnets"
+  - name: "Delete public subnets, retry up to 3 times to allow instances to terminate"
     ec2_vpc_subnet:
       vpc_id: "{{ vpc_id }}"
       region: "{{ vpc_region }}"
@@ -97,13 +97,16 @@
       state: absent
     with_items:
       - "{{ vpc_public_subnet_cidrs }}"
+    register: result
+    until: result|success
+    retries: 3
+    delay: 60
 
   - name: "Delete internet gateway for public subnets"
     ec2_vpc_igw:
       vpc_id: "{{ vpc_id }}"
       region: "{{ vpc_region }}"
       state: absent
-
   - name: Get list of route tables
     ec2_vpc_route_table_facts:
       region: "{{ vpc_region }}"
@@ -134,6 +137,7 @@
     with_dict: "{{ deleteable.deleteable }}"
     when:
       - item.value
+
 
 
   - name: "Set VPC state to absent"
