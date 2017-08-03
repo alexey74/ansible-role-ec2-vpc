@@ -14,8 +14,8 @@ Provide a simple self-contained interface.
 * Python: `boto` (not boto3)
 
 ```yaml
-service_env: 'dev'        # actual VPC name will have this appended ie: name_env
-service_state: 'present'  # set to 'absent' to tear things down after
+vpc_service_env: 'dev'        # actual VPC name will have this appended ie: name_env
+vpc_service_state: 'present'  # set to 'absent' to tear things down after
 
 vpc_name: 'test'
 vpc_cidr: '10.0.0.0/16'
