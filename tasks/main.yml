@@ -101,10 +101,7 @@
       if_exist_do_not_create: true
     register: natgw
 
-  # - debug: var=natgw
-
-  - name: wait briefly fo rthe natgw to provision, otherwise the rtb won't add it.
-    pause: seconds=15
+  - debug: var=natgw
 
   - name: "Create route table for private subnets"
     local_action:
@@ -116,8 +113,11 @@
         vpc: "{{ vpc_name }}_{{ vpc_service_env }}"
       routes:
         - dest: 0.0.0.0/0
-          gateway_id: "{{ natgw.nat_gateway_id }}"
+          gateway_id: "{{ natgw.nat_gateway_id|default(natgw.NatGatewayId) }}"
     register: private_rtb
+    until: private_rtb|success
+    retries: 3
+    delay: 10
 
   when: "vpc_service_state == 'present'"
 
@@ -146,9 +146,30 @@
     ec2_vpc_nat_gateway:
       nat_gateway_id: "{{ item.nat_gateway_id }}"
       region: "{{ vpc_region }}"
+      # release_eip: yes  # this fails w/ bad rights even with admin rights
       state: absent
     with_items:
       - "{{vpc_nat_gw_facts.result}}"
+
+  # to make up for the permissions error on release_eip, we release it here manually
+  # the loop is to handle multiple NAT GWs. necessary in testing when one might be 'deleting'
+  # the retry loop is to handle GWs in the "deleting" state as the NIC our EIP is
+  # attached to is one of the last things to be deleted. we'll get perms errors
+  # if we attempt to release the EIP before the NAT GW's NIC lets go of the IP.
+  - name: Release NAT GW's elastic IP
+    ec2_eip:
+      public_ip: "{{ item.nat_gateway_addresses[0].public_ip }}"
+      region: "{{ vpc_region }}"
+      state: absent
+    when:
+      - "'public_ip' in item.nat_gateway_addresses[0].keys()"
+      - "item.state != 'deleted'"
+    with_items:
+      - "{{vpc_nat_gw_facts.result}}"
+    register: result
+    until: result|success
+    retries: 4
+    delay: 15
 
   - name: "Delete subnets, retry up to 3 times to allow instances to terminate"
     ec2_vpc_subnet:
