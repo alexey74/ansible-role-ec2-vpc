@@ -101,7 +101,10 @@
       if_exist_do_not_create: true
     register: natgw
 
-  - debug: var=natgw
+  # - debug: var=natgw
+
+  - name: wait briefly fo rthe natgw to provision, otherwise the rtb won't add it.
+    pause: seconds=15
 
   - name: "Create route table for private subnets"
     local_action:
@@ -113,7 +116,7 @@
         vpc: "{{ vpc_name }}_{{ vpc_service_env }}"
       routes:
         - dest: 0.0.0.0/0
-          gateway_id: "{{ natgw.NatGatewayId }}"
+          gateway_id: "{{ natgw.nat_gateway_id }}"
     register: private_rtb
 
   when: "vpc_service_state == 'present'"
