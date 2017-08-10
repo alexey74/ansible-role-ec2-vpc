@@ -81,6 +81,8 @@
         - "igw.gateway_id != ''"
       msg: "Empty or non-existant internet gateway id. did the create fail silently?"
 
+  - debug: var=igw
+
   - name: "Create route table for public subnets"
     local_action:
       module: ec2_vpc_route_table
