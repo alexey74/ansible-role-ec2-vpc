@@ -117,7 +117,7 @@
         - dest: 0.0.0.0/0
           gateway_id: "{{ natgw.nat_gateway_id|default(natgw.NatGatewayId) }}"
     register: private_rtb
-    until: private_rtb|success
+    until: private_rtb is success
     retries: 3
     delay: 10
 
