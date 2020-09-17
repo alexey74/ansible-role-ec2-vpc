@@ -183,7 +183,7 @@
       - "{{ vpc_public_subnet_cidrs }}"
       - "{{ vpc_private_subnet_cidrs }}"
     register: result
-    until: result|success
+    until: result is success
     retries: 3
     delay: 60
 
