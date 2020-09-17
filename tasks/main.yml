@@ -169,7 +169,7 @@
     with_items:
       - "{{vpc_nat_gw_facts.result}}"
     register: result
-    until: result|success
+    until: result is success
     retries: 4
     delay: 15
 
