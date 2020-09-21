@@ -98,7 +98,7 @@
 
   - name: Create NAT gateway for private subnets
     ec2_vpc_nat_gateway:
-      subnet_id: "{{ vpc_private_subnets[0] }}"
+      subnet_id: "{{ vpc_public_subnets[0] }}"
       region: "{{ vpc_region }}"
       if_exist_do_not_create: true
     register: natgw
