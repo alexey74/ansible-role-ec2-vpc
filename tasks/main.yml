@@ -91,11 +91,18 @@
       subnets: "{{ vpc_public_subnet_cidrs }}"
       tags:
         vpc: "{{ vpc_name }}_{{ vpc_service_env }}"
+        Name: Public
       routes:
         - dest: 0.0.0.0/0
-          gateway_id: "{{ igw.gateway_id }}"
+          gateway_id: igw 
+          #gateway_id: "{{ igw.gateway_id }}"
     register: public_rtb
-
+    until: public_rtb is success
+    retries: 3
+    delay: 10
+    
+  - debug: var=public_rtb
+  
   - name: Create NAT gateway for private subnets
     ec2_vpc_nat_gateway:
       subnet_id: "{{ vpc_public_subnets[0] }}"
@@ -113,6 +120,7 @@
       subnets: "{{ vpc_private_subnet_cidrs }}"
       tags:
         vpc: "{{ vpc_name }}_{{ vpc_service_env }}"
+        Name: private
       routes:
         - dest: 0.0.0.0/0
           gateway_id: "{{ natgw.nat_gateway_id|default(natgw.NatGatewayId) }}"
